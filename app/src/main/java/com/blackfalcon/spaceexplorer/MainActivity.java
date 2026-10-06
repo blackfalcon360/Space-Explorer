@@ -31,7 +31,6 @@ import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.TextView;
 
-import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Locale;
 
@@ -68,7 +67,7 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
     
     // Time travel / slider control
     private long customTimeOffsetMs = 0L; // Offset in milliseconds from live time
-    private final Calendar customCalendar = Calendar.getInstance();
+    private Calendar customCalendar = Calendar.getInstance();
 
     // views
     private SkyDialView dial;
@@ -191,19 +190,19 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
         infoCard.addView(infoVis);
         infoCard.addView(infoFun);
 
-        // ---- Time Travel Control Box (Exact Design) ----
+        // ---- Time Travel Control Box ----
         LinearLayout timeBox = new LinearLayout(this);
         timeBox.setOrientation(LinearLayout.VERTICAL);
-        timeBox.setPadding(dp(14), dp(12), dp(14), dp(14));
-        timeBox.setBackground(round(CARD, Color.parseColor("#2A2A50"), 18));
+        timeBox.setPadding(dp(12), dp(10), dp(12), dp(10));
+        timeBox.setBackground(round(CARD, Color.parseColor("#3A3A60"), 16));
 
-        timeLabelTv = tv(15, Color.WHITE, true);
+        timeLabelTv = tv(14, GOLD, true);
+        timeLabelTv.setText("Time: Live");
 
         // Slider for quick hour adjustments (-12h to +12h)
         timeSeekBar = new SeekBar(this);
         timeSeekBar.setMax(24);
         timeSeekBar.setProgress(12);
-        timeSeekBar.setPadding(dp(8), dp(10), dp(8), dp(10));
         timeSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
@@ -218,33 +217,44 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
             @Override public void onStopTrackingTouch(SeekBar seekBar) {}
         });
 
-        // Button Row: ◄ -1 day | Now | +1 day ►
+        // 4 Buttons in One Row: -1d, -1h, +1h, +1d
         LinearLayout buttonRow = new LinearLayout(this);
         buttonRow.setOrientation(LinearLayout.HORIZONTAL);
-        buttonRow.setPadding(0, dp(4), 0, 0);
+        buttonRow.setPadding(0, dp(6), 0, 0);
 
-        TextView btnPrevDay = timePill("◄ -1 day");
-        TextView btnNow = timePill("Now");
-        TextView btnNextDay = timePill("+1 day ►");
+        TextView btnMinusDay = smallPill("-1d");
+        TextView btnMinusHour = smallPill("-1h");
+        TextView btnPlusHour = smallPill("+1h");
+        TextView btnPlusDay = smallPill("+1d");
 
-        btnPrevDay.setOnClickListener(v -> addTimeOffset(-24)); // -1 Day (-24 Hours)
-        btnNow.setOnClickListener(v -> {                        // Reset to Live Time
+        btnMinusDay.setOnClickListener(v -> addTimeOffset(-24));  // -1 Day
+        btnMinusHour.setOnClickListener(v -> addTimeOffset(-1));  // -1 Hour
+        btnPlusHour.setOnClickListener(v -> addTimeOffset(1));    // +1 Hour
+        btnPlusDay.setOnClickListener(v -> addTimeOffset(24));   // +1 Day
+
+        LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        btnLp.setMargins(dp(3), 0, dp(3), 0);
+
+        buttonRow.addView(btnMinusDay, btnLp);
+        buttonRow.addView(btnMinusHour, btnLp);
+        buttonRow.addView(btnPlusHour, btnLp);
+        buttonRow.addView(btnPlusDay, btnLp);
+
+        // Reset to Live Time Button
+        TextView btnNow = smallPill("Reset to Live Time");
+        btnNow.setOnClickListener(v -> {
             customTimeOffsetMs = 0L;
             timeSeekBar.setProgress(12);
             updateSky();
         });
-        btnNextDay.setOnClickListener(v -> addTimeOffset(24));  // +1 Day (+24 Hours)
-
-        LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
-        btnLp.setMargins(dp(4), 0, dp(4), 0);
-
-        buttonRow.addView(btnPrevDay, btnLp);
-        buttonRow.addView(btnNow, btnLp);
-        buttonRow.addView(btnNextDay, btnLp);
+        LinearLayout.LayoutParams nowLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        nowLp.setMargins(0, dp(8), 0, 0);
 
         timeBox.addView(timeLabelTv);
         timeBox.addView(timeSeekBar);
         timeBox.addView(buttonRow);
+        timeBox.addView(btnNow, nowLp);
 
         TextView hint = tv(12, GRAY, false);
         hint.setText("Tap a planet to learn about it. Near the middle = high in the sky. Near the edge = close to the ground. Tip: your fist at arm's length is about 10° wide.");
@@ -326,12 +336,12 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
         updateSky();
     }
 
-    private TextView timePill(String s) {
-        TextView b = tv(14, GOLD, true);
+    private TextView smallPill(String s) {
+        TextView b = tv(13, GOLD, true);
         b.setText(s);
         b.setGravity(Gravity.CENTER);
-        b.setPadding(dp(8), dp(10), dp(8), dp(10));
-        b.setBackground(round(Color.parseColor("#151528"), GOLD, 20));
+        b.setPadding(dp(6), dp(8), dp(6), dp(8));
+        b.setBackground(round(Color.parseColor("#2A2200"), GOLD, 16));
         b.setClickable(true);
         return b;
     }
@@ -496,14 +506,12 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
     private void updateSky() {
         long targetTime = System.currentTimeMillis() + customTimeOffsetMs;
 
-        customCalendar.setTimeInMillis(targetTime);
-        SimpleDateFormat sdf = new SimpleDateFormat("EEE d MMM, HH:mm", Locale.US);
-        String formattedDate = sdf.format(customCalendar.getTime());
-
         if (customTimeOffsetMs == 0) {
-            timeLabelTv.setText("🕒 " + formattedDate + "  (Now)");
+            timeLabelTv.setText("Time: Live");
         } else {
-            timeLabelTv.setText("🕒 " + formattedDate);
+            customCalendar.setTimeInMillis(targetTime);
+            java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("MMM dd, HH:mm", Locale.US);
+            timeLabelTv.setText("Time: " + sdf.format(customCalendar.getTime()));
         }
 
         if (!hasLoc) { updateInfo(); return; }
@@ -511,7 +519,7 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
         moonPhase = ((int) Math.floor((sky.moonElong + 22.5) / 45.0)) % 8;
         moonLit = (1 - Math.cos(Math.toRadians(sky.moonElong))) / 2 * 100;
         dial.setBodies(sky.az, sky.alt, moonPhase);
-        moonTv.setText(String.format(Locale.US, "Moon today: %s %s • %d%% lit",
+        moonTv.setText(String.format(Locale.US, "Moon: %s %s • %d%% lit",
                 SkyDialView.MOON_EMOJI[moonPhase], MOON_NAME[moonPhase], Math.round(moonLit)));
         updateInfo();
     }
@@ -651,4 +659,4 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
     }
 
     @Override public void onAccuracyChanged(Sensor sensor, int accuracy) { }
-}
+} 
