@@ -28,8 +28,11 @@ import android.view.WindowManager;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
+import android.widget.SeekBar;
 import android.widget.TextView;
 
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
 import java.util.Locale;
 
 public class MainActivity extends Activity implements SensorEventListener, LocationListener {
@@ -62,15 +65,26 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
     private int moonPhase = 0;
     private double moonLit = 0;
     private int selected = 1;
+    
+    // Time travel / slider control
+    private long customTimeOffsetMs = 0L; // Offset in milliseconds from live time
+    private final Calendar customCalendar = Calendar.getInstance();
 
     // views
     private SkyDialView dial;
     private LinearLayout skyPage, panelBox;
     private ScrollView panelScroll, planetsPage;
     private TextView facingTv, moonTv, infoTitle, infoVis, infoFun, statusTv, refreshBtn, tabSky, tabPlanets;
+    private TextView timeLabelTv;
+    private SeekBar timeSeekBar;
 
     private final Runnable tick = new Runnable() {
-        @Override public void run() { updateSky(); handler.postDelayed(this, 5000); }
+        @Override public void run() { 
+            if (customTimeOffsetMs == 0) {
+                updateSky(); 
+            }
+            handler.postDelayed(this, 5000); 
+        }
     };
 
     // ------------------------------------------------------------ lifecycle
@@ -157,7 +171,7 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
         panelBox.setPadding(dp(14), dp(8), dp(14), dp(14));
 
         TextView title = new TextView(this);
-        title.setText("\uD83E\uDDED Sky Compass");
+        title.setText("🧭 Sky Compass");
         title.setTextColor(Color.WHITE);
         title.setTextSize(22);
         title.setTypeface(Typeface.DEFAULT_BOLD);
@@ -177,22 +191,84 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
         infoCard.addView(infoVis);
         infoCard.addView(infoFun);
 
+        // ---- Time Travel Control Box (Exact Design) ----
+        LinearLayout timeBox = new LinearLayout(this);
+        timeBox.setOrientation(LinearLayout.VERTICAL);
+        timeBox.setPadding(dp(14), dp(12), dp(14), dp(14));
+        timeBox.setBackground(round(CARD, Color.parseColor("#2A2A50"), 18));
+
+        timeLabelTv = tv(15, Color.WHITE, true);
+
+        // Slider for quick hour adjustments (-12h to +12h)
+        timeSeekBar = new SeekBar(this);
+        timeSeekBar.setMax(24);
+        timeSeekBar.setProgress(12);
+        timeSeekBar.setPadding(dp(8), dp(10), dp(8), dp(10));
+        timeSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                if (fromUser) {
+                    int hourOffset = progress - 12;
+                    customTimeOffsetMs = hourOffset * 3600000L;
+                    updateSky();
+                }
+            }
+
+            @Override public void onStartTrackingTouch(SeekBar seekBar) {}
+            @Override public void onStopTrackingTouch(SeekBar seekBar) {}
+        });
+
+        // Button Row: ◄ -1 day | Now | +1 day ►
+        LinearLayout buttonRow = new LinearLayout(this);
+        buttonRow.setOrientation(LinearLayout.HORIZONTAL);
+        buttonRow.setPadding(0, dp(4), 0, 0);
+
+        TextView btnPrevDay = timePill("◄ -1 day");
+        TextView btnNow = timePill("Now");
+        TextView btnNextDay = timePill("+1 day ►");
+
+        btnPrevDay.setOnClickListener(v -> addTimeOffset(-24)); // -1 Day (-24 Hours)
+        btnNow.setOnClickListener(v -> {                        // Reset to Live Time
+            customTimeOffsetMs = 0L;
+            timeSeekBar.setProgress(12);
+            updateSky();
+        });
+        btnNextDay.setOnClickListener(v -> addTimeOffset(24));  // +1 Day (+24 Hours)
+
+        LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        btnLp.setMargins(dp(4), 0, dp(4), 0);
+
+        buttonRow.addView(btnPrevDay, btnLp);
+        buttonRow.addView(btnNow, btnLp);
+        buttonRow.addView(btnNextDay, btnLp);
+
+        timeBox.addView(timeLabelTv);
+        timeBox.addView(timeSeekBar);
+        timeBox.addView(buttonRow);
+
         TextView hint = tv(12, GRAY, false);
-        hint.setText("Tap a planet to learn about it. Near the middle = high in the sky. Near the edge = close to the ground. Tip: your fist at arm's length is about 10\u00B0 wide.");
+        hint.setText("Tap a planet to learn about it. Near the middle = high in the sky. Near the edge = close to the ground. Tip: your fist at arm's length is about 10° wide.");
         hint.setPadding(0, dp(8), 0, dp(4));
 
         statusTv = tv(12, GRAY, false);
 
-        refreshBtn = pill("\u21BB  Update my sky");
+        refreshBtn = pill("↻  Update my sky");
         refreshBtn.setOnClickListener(v -> refreshLocation());
 
         panelBox.addView(title);
         panelBox.addView(facingTv);
         panelBox.addView(moonTv);
+
         LinearLayout.LayoutParams icp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         icp.setMargins(0, dp(10), 0, 0);
         panelBox.addView(infoCard, icp);
+
+        LinearLayout.LayoutParams tbp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        tbp.setMargins(0, dp(10), 0, 0);
+        panelBox.addView(timeBox, tbp);
+
         panelBox.addView(hint);
         panelBox.addView(statusTv);
         LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(
@@ -217,7 +293,7 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
 
         // ---- credit + tabs ----
         TextView credit = tv(13, Color.WHITE, true);
-        credit.setText("By: Black Falcon \uD83E\uDD85");
+        credit.setText("By: Black Falcon 🦅");
         credit.setGravity(Gravity.RIGHT);
         credit.setPadding(dp(14), dp(4), dp(14), dp(4));
         credit.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
@@ -225,8 +301,8 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
         LinearLayout tabs = new LinearLayout(this);
         tabs.setOrientation(LinearLayout.HORIZONTAL);
         tabs.setBackgroundColor(Color.parseColor("#0C0C20"));
-        tabSky = tab("\uD83E\uDDED  Sky");
-        tabPlanets = tab("\uD83E\uDE90  Planets");
+        tabSky = tab("🧭  Sky");
+        tabPlanets = tab("🪐  Planets");
         tabSky.setOnClickListener(v -> showTab(true));
         tabPlanets.setOnClickListener(v -> showTab(false));
         tabs.addView(tabSky, new LinearLayout.LayoutParams(0, dp(52), 1f));
@@ -238,6 +314,26 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
         root.addView(tabs);
         setContentView(root);
         showTab(true);
+    }
+
+    private void addTimeOffset(int hours) {
+        customTimeOffsetMs += hours * 3600000L;
+        int currentSliderHours = (int) (customTimeOffsetMs / 3600000L);
+        int progress = currentSliderHours + 12;
+        if (progress >= 0 && progress <= 24) {
+            timeSeekBar.setProgress(progress);
+        }
+        updateSky();
+    }
+
+    private TextView timePill(String s) {
+        TextView b = tv(14, GOLD, true);
+        b.setText(s);
+        b.setGravity(Gravity.CENTER);
+        b.setPadding(dp(8), dp(10), dp(8), dp(10));
+        b.setBackground(round(Color.parseColor("#151528"), GOLD, 20));
+        b.setClickable(true);
+        return b;
     }
 
     private void applyOrientation() {
@@ -311,7 +407,7 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
         box.setPadding(dp(14), dp(14), dp(14), dp(14));
 
         TextView h = tv(24, Color.WHITE, true);
-        h.setText("\uD83E\uDE90 Our Solar System");
+        h.setText("🪐 Our Solar System");
         TextView sub = tv(15, GRAY, false);
         sub.setText("The Sun is a star. Eight planets travel around it, and the Moon travels around Earth. Tap a card to learn more!");
         sub.setPadding(0, dp(4), 0, dp(8));
@@ -358,7 +454,7 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
         top.addView(names, np);
 
         final TextView arrow = tv(20, info.color, true);
-        arrow.setText("\u25BE");
+        arrow.setText("▾");
         top.addView(arrow);
         card.addView(top);
 
@@ -379,7 +475,7 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
             details.addView(row);
         }
         TextView fun = tv(14, info.color, false);
-        fun.setText("\u2B50 Did you know? " + info.fun);
+        fun.setText("⭐ Did you know? " + info.fun);
         fun.setPadding(0, dp(10), 0, 0);
         details.addView(fun);
         card.addView(details);
@@ -387,7 +483,7 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
         card.setOnClickListener(v -> {
             boolean open = details.getVisibility() == View.VISIBLE;
             details.setVisibility(open ? View.GONE : View.VISIBLE);
-            arrow.setText(open ? "\u25BE" : "\u25B4");
+            arrow.setText(open ? "▾" : "▴");
         });
         return card;
     }
@@ -398,20 +494,32 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
     }
 
     private void updateSky() {
+        long targetTime = System.currentTimeMillis() + customTimeOffsetMs;
+
+        customCalendar.setTimeInMillis(targetTime);
+        SimpleDateFormat sdf = new SimpleDateFormat("EEE d MMM, HH:mm", Locale.US);
+        String formattedDate = sdf.format(customCalendar.getTime());
+
+        if (customTimeOffsetMs == 0) {
+            timeLabelTv.setText("🕒 " + formattedDate + "  (Now)");
+        } else {
+            timeLabelTv.setText("🕒 " + formattedDate);
+        }
+
         if (!hasLoc) { updateInfo(); return; }
-        sky = Astro.compute(System.currentTimeMillis(), lat, lon);
+        sky = Astro.compute(targetTime, lat, lon);
         moonPhase = ((int) Math.floor((sky.moonElong + 22.5) / 45.0)) % 8;
         moonLit = (1 - Math.cos(Math.toRadians(sky.moonElong))) / 2 * 100;
         dial.setBodies(sky.az, sky.alt, moonPhase);
-        moonTv.setText(String.format(Locale.US, "Moon today: %s %s \u2022 %d%% lit",
+        moonTv.setText(String.format(Locale.US, "Moon today: %s %s • %d%% lit",
                 SkyDialView.MOON_EMOJI[moonPhase], MOON_NAME[moonPhase], Math.round(moonLit)));
         updateInfo();
     }
 
     private void updateInfo() {
         Info info = Info.byName(Astro.NAMES[selected]);
-        infoTitle.setText(info.name + " \u2014 " + info.tagline);
-        infoFun.setText("\u2B50 " + info.fun);
+        infoTitle.setText(info.name + " — " + info.tagline);
+        infoFun.setText("⭐ " + info.fun);
 
         if (!hasLoc || sky == null) {
             infoVis.setText("Tap \"Update my sky\" so I can find where it is above you!");
@@ -421,25 +529,25 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
         String s;
         if (a > 0) {
             int fists = Math.max(1, (int) Math.round(a / 10.0));
-            s = info.name + " is up in the sky right now! Look " + dirWord(z) + ", about " + fists
+            s = info.name + " is up in the sky! Look " + dirWord(z) + ", about " + fists
                     + (fists == 1 ? " fist" : " fists") + " above the ground.";
-            if (selected >= 2 && sky.alt[0] > -6) s += " But the sky is too bright to see it \u2014 try after sunset.";
+            if (selected >= 2 && sky.alt[0] > -6) s += " But the sky is too bright to see it — try after sunset.";
         } else if (selected == 0) {
             s = "The Sun is on the other side of the Earth right now, so it is night time here.";
         } else {
-            s = info.name + " is below the horizon right now \u2014 hiding on the other side of the Earth.";
+            s = info.name + " is below the horizon right now — hiding on the other side of the Earth.";
         }
         infoVis.setText(s);
     }
 
     private void updateStatus() {
         switch (locStatus) {
-            case 1: statusTv.setText("Finding your place on Earth\u2026"); break;
-            case 2: statusTv.setText("Using your GPS location \u2022 works offline"); break;
-            case 3: statusTv.setText("Using your saved location \u2022 tap Update to refresh"); break;
-            case 4: statusTv.setText("GPS is off \u2014 turn it on, then tap Update"); break;
+            case 1: statusTv.setText("Finding your place on Earth…"); break;
+            case 2: statusTv.setText("Using your GPS location • works offline"); break;
+            case 3: statusTv.setText("Using your saved location • tap Update to refresh"); break;
+            case 4: statusTv.setText("GPS is off — turn it on, then tap Update"); break;
             case 5: statusTv.setText("Please allow location so I can find your sky"); break;
-            case 6: statusTv.setText(hasLoc ? "No GPS fix \u2014 using your saved location" : "No GPS fix yet \u2014 go outside and tap Update"); break;
+            case 6: statusTv.setText(hasLoc ? "No GPS fix — using your saved location" : "No GPS fix yet — go outside and tap Update"); break;
             default: statusTv.setText("Tap Update to find your sky");
         }
     }
@@ -539,7 +647,7 @@ public class MainActivity extends Activity implements SensorEventListener, Locat
         if (heading < 0) heading += 360f;
         dial.setHeading(heading);
         String[] d8 = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"};
-        facingTv.setText(String.format(Locale.US, "You are facing: %d\u00B0 %s", Math.round(heading) % 360, d8[Math.round(heading / 45f) % 8]));
+        facingTv.setText(String.format(Locale.US, "You are facing: %d° %s", Math.round(heading) % 360, d8[Math.round(heading / 45f) % 8]));
     }
 
     @Override public void onAccuracyChanged(Sensor sensor, int accuracy) { }
